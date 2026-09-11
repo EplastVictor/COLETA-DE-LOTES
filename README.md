@@ -1,1 +1,0 @@
-# COLETA-DE-LOTES
