@@ -1,0 +1,655 @@
+bash
+
+cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Registro de Lotes — Bipagem</title>
+<style>
+  :root{
+    --bg: #14161a;
+    --panel: #1e2128;
+    --panel-2: #262a33;
+    --line: #333846;
+    --text: #eceae4;
+    --muted: #8b909c;
+    --amber: #f2b705;
+    --amber-dim: #7a5e05;
+    --blue: #3ea6ff;
+    --blue-dim: #1c4a70;
+    --danger: #e8534f;
+    --ok: #59d18a;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display:flex;
+    flex-direction:column;
+    overscroll-behavior:none;
+  }
+  .mono{ font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; letter-spacing: 0.02em; }
+
+  header{
+    padding:14px 16px 12px;
+    border-bottom:1px solid var(--line);
+    background:var(--panel);
+  }
+  .status-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    margin-bottom:12px;
+  }
+  .status-left{ display:flex; align-items:center; gap:8px; min-width:0; }
+  .dot{
+    width:9px; height:9px; border-radius:50%;
+    background:var(--muted);
+    flex-shrink:0;
+  }
+  .dot.live{ background:var(--ok); box-shadow:0 0 0 0 rgba(89,209,138,0.6); animation: pulse 1.8s infinite; }
+  @keyframes pulse{
+    0%{ box-shadow:0 0 0 0 rgba(89,209,138,0.5); }
+    70%{ box-shadow:0 0 0 8px rgba(89,209,138,0); }
+    100%{ box-shadow:0 0 0 0 rgba(89,209,138,0); }
+  }
+  .status-text{ font-size:13px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  .conn-badge{
+    display:flex; align-items:center; gap:5px;
+    font-size:11px; color:var(--muted);
+    flex-shrink:0;
+    padding:3px 8px;
+    border-radius:20px;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+  }
+  .conn-badge .cdot{ width:7px; height:7px; border-radius:50%; background:var(--muted); }
+  .conn-badge.online .cdot{ background:var(--ok); }
+  .conn-badge.offline .cdot{ background:var(--danger); }
+  .conn-badge.offline{ color:var(--danger); border-color:var(--danger); }
+
+  .mode-toggle{
+    display:flex;
+    background:var(--panel-2);
+    border-radius:10px;
+    padding:3px;
+    gap:3px;
+    margin-bottom:10px;
+  }
+  .mode-toggle button{
+    flex:1;
+    border:none;
+    background:transparent;
+    color:var(--muted);
+    font-size:15px;
+    font-weight:600;
+    padding:10px 0;
+    border-radius:8px;
+    font-family:inherit;
+  }
+  .mode-toggle button.active.paletes{ background:var(--amber); color:#211a02; }
+  .mode-toggle button.active.unidades{ background:var(--blue); color:#04141f; }
+
+  .scan-field{
+    display:flex;
+    gap:6px;
+  }
+  #capture{
+    flex:1;
+    min-width:0;
+    background:var(--panel-2);
+    border:1.5px solid var(--line);
+    border-radius:10px;
+    color:var(--text);
+    font-size:16px;
+    padding:12px 12px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  #capture:focus{ outline:none; border-color:var(--amber); }
+  body.mode-unidades #capture:focus{ border-color:var(--blue); }
+  #capture::placeholder{ color:var(--muted); font-family:inherit; }
+
+  .icon-btn{
+    width:44px; flex-shrink:0;
+    border-radius:10px;
+    border:1.5px solid var(--line);
+    background:var(--panel-2);
+    color:var(--muted);
+    font-size:17px;
+    font-family:inherit;
+  }
+  .icon-btn.on{ color:var(--text); border-color:var(--amber); background:rgba(242,183,5,0.12); }
+
+  .add-btn{
+    flex-shrink:0;
+    padding:0 16px;
+    border-radius:10px;
+    border:none;
+    background:var(--amber);
+    color:#211a02;
+    font-weight:700;
+    font-size:14px;
+    font-family:inherit;
+  }
+  body.mode-unidades .add-btn{ background:var(--blue); color:#04141f; }
+
+  .lastscan{
+    padding:16px;
+    text-align:center;
+    border-bottom:1px solid var(--line);
+    background:var(--panel);
+    transition: background 0.15s ease;
+  }
+  .lastscan .label{ font-size:12px; color:var(--muted); margin-bottom:6px; }
+  .lastscan .code{ font-size:26px; font-weight:700; word-break:break-all; }
+  .lastscan .code.empty{ color:var(--muted); font-weight:400; font-size:16px; }
+  .lastscan .delta{ margin-top:4px; font-size:13px; color:var(--muted); }
+  .lastscan.flash-paletes{ background:var(--amber-dim); }
+  .lastscan.flash-unidades{ background:var(--blue-dim); }
+
+  main{
+    flex:1;
+    overflow-y:auto;
+    padding:8px 12px 12px;
+  }
+  .empty-state{
+    text-align:center;
+    color:var(--muted);
+    padding:60px 20px;
+    font-size:14px;
+    line-height:1.6;
+  }
+
+  .row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:10px 12px;
+    margin-bottom:8px;
+  }
+  .row .lote{
+    flex:1;
+    min-width:0;
+    font-size:16px;
+    font-weight:600;
+    overflow-wrap:anywhere;
+  }
+  .row .counts{
+    display:flex;
+    gap:14px;
+    flex-shrink:0;
+  }
+  .count-block{ text-align:center; min-width:34px; }
+  .count-block .n{ font-size:17px; font-weight:700; }
+  .count-block.paletes .n{ color:var(--amber); }
+  .count-block.unidades .n{ color:var(--blue); }
+  .count-block .u{ font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; }
+
+  .row .actions{ display:flex; gap:4px; flex-shrink:0; }
+  .row .actions button{
+    width:26px; height:26px;
+    border-radius:6px;
+    border:1px solid var(--line);
+    background:var(--panel-2);
+    color:var(--text);
+    font-size:14px;
+    line-height:1;
+    font-family:inherit;
+  }
+  .row .actions button.del{ color:var(--danger); border-color:transparent; }
+
+  footer{
+    border-top:1px solid var(--line);
+    background:var(--panel);
+    padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+  }
+  .totals{
+    display:flex;
+    justify-content:space-around;
+    margin-bottom:10px;
+  }
+  .totals .t{ text-align:center; }
+  .totals .t .n{ font-size:18px; font-weight:700; }
+  .totals .t .l{ font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; }
+
+  .btn-row{ display:flex; gap:8px; }
+  .btn-row button{
+    flex:1;
+    padding:11px 0;
+    border-radius:9px;
+    border:1px solid var(--line);
+    background:var(--panel-2);
+    color:var(--text);
+    font-size:13px;
+    font-weight:600;
+    font-family:inherit;
+  }
+  .btn-row button.danger{ color:var(--danger); }
+
+  /* quantity modal */
+  .modal-overlay{
+    position:fixed; inset:0;
+    background:rgba(0,0,0,0.55);
+    display:flex; align-items:center; justify-content:center;
+    padding:24px;
+    z-index:50;
+  }
+  .modal-overlay[hidden]{ display:none; }
+  .modal-box{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:20px;
+    width:100%;
+    max-width:320px;
+  }
+  .modal-label{ font-size:14px; color:var(--muted); margin-bottom:4px; }
+  .modal-lote{ font-size:19px; font-weight:700; margin-bottom:14px; word-break:break-all; }
+  #qtyInput{
+    width:100%;
+    font-size:24px;
+    text-align:center;
+    padding:12px;
+    border-radius:10px;
+    border:1.5px solid var(--blue);
+    background:var(--panel-2);
+    color:var(--text);
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    margin-bottom:14px;
+  }
+  #qtyInput:focus{ outline:none; }
+  .modal-actions{ display:flex; gap:8px; }
+  .modal-actions button{
+    flex:1;
+    padding:11px 0;
+    border-radius:9px;
+    border:1px solid var(--line);
+    background:var(--panel-2);
+    color:var(--text);
+    font-size:14px;
+    font-weight:600;
+    font-family:inherit;
+  }
+  .modal-actions button.confirm{ background:var(--blue); color:#04141f; border-color:transparent; }
+</style>
+</head>
+<body>
+
+  <header>
+    <div class="status-row">
+      <div class="status-left">
+        <div class="dot" id="statusDot"></div>
+        <div class="status-text" id="statusText">Toque no campo para começar a bipar</div>
+      </div>
+      <div class="conn-badge" id="connBadge"><span class="cdot"></span><span id="connLabel">conectando…</span></div>
+    </div>
+    <div class="mode-toggle">
+      <button id="btnPaletes" class="active paletes">Paletes</button>
+      <button id="btnUnidades">Unidades</button>
+    </div>
+    <div class="scan-field">
+      <input id="capture" type="text" inputmode="none" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Bipe o QR code ou digite o lote">
+      <button class="icon-btn" id="btnKeyboard" title="Ativar digitação manual">⌨</button>
+      <button class="add-btn" id="btnAdd">Add</button>
+    </div>
+  </header>
+
+  <div class="lastscan" id="lastScanBox">
+    <div class="label">Último lote registrado</div>
+    <div class="code empty" id="lastCode">aguardando leitura…</div>
+    <div class="delta" id="lastDelta"></div>
+  </div>
+
+  <main id="list">
+    <div class="empty-state" id="emptyState">Nenhum lote registrado ainda.<br>Comece a bipar os QR codes.</div>
+  </main>
+
+  <footer>
+    <div class="totals">
+      <div class="t"><div class="n" id="totalLotes">0</div><div class="l">Lotes</div></div>
+      <div class="t"><div class="n" id="totalPaletes" style="color:var(--amber)">0</div><div class="l">Paletes</div></div>
+      <div class="t"><div class="n" id="totalUnidades" style="color:var(--blue)">0</div><div class="l">Unidades</div></div>
+    </div>
+    <div class="btn-row">
+      <button id="btnExport">Exportar CSV</button>
+      <button id="btnClear" class="danger">Limpar tudo</button>
+    </div>
+  </footer>
+
+  <div class="modal-overlay" id="qtyModal" hidden>
+    <div class="modal-box">
+      <div class="modal-label">Quantas unidades desse lote?</div>
+      <div class="modal-lote mono" id="qtyLoteName"></div>
+      <input id="qtyInput" type="number" inputmode="numeric" min="1" value="1">
+      <div class="modal-actions">
+        <button id="qtyCancel">Cancelar</button>
+        <button id="qtyConfirm" class="confirm">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import {
+    getDatabase, ref, onValue, runTransaction, remove as dbRemove
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+  var firebaseConfig = {
+    apiKey: "AIzaSyB-TkOrYmwotlldpyikZ2uoBcueO6y_EUU",
+    authDomain: "coleta-de-lotes.firebaseapp.com",
+    databaseURL: "https://coleta-de-lotes-default-rtdb.firebaseio.com",
+    projectId: "coleta-de-lotes",
+    storageBucket: "coleta-de-lotes.firebasestorage.app",
+    messagingSenderId: "965651405994",
+    appId: "1:965651405994:web:c44188be9c57399dc644d3"
+  };
+
+  var fbApp = initializeApp(firebaseConfig);
+  var db = getDatabase(fbApp);
+  var lotesRef = ref(db, 'lotes');
+  var connRef = ref(db, '.info/connected');
+
+  function encodeKey(code){
+    return encodeURIComponent(String(code)).replace(/\./g, '%2E');
+  }
+
+  var data = {};        // { lote: { paletes:n, unidades:n, ts:number } }
+  var mode = 'paletes';
+  var manualKeyboard = false;
+  var lastValue = '';
+  var lastTime = 0;
+  var pendingCode = '';
+
+  var capture = document.getElementById('capture');
+  var statusDot = document.getElementById('statusDot');
+  var statusText = document.getElementById('statusText');
+  var connBadge = document.getElementById('connBadge');
+  var connLabel = document.getElementById('connLabel');
+  var btnPaletes = document.getElementById('btnPaletes');
+  var btnUnidades = document.getElementById('btnUnidades');
+  var btnKeyboard = document.getElementById('btnKeyboard');
+  var btnAdd = document.getElementById('btnAdd');
+  var lastScanBox = document.getElementById('lastScanBox');
+  var lastCode = document.getElementById('lastCode');
+  var lastDelta = document.getElementById('lastDelta');
+  var list = document.getElementById('list');
+  var emptyState = document.getElementById('emptyState');
+  var totalLotes = document.getElementById('totalLotes');
+  var totalPaletes = document.getElementById('totalPaletes');
+  var totalUnidades = document.getElementById('totalUnidades');
+  var qtyModal = document.getElementById('qtyModal');
+  var qtyLoteName = document.getElementById('qtyLoteName');
+  var qtyInput = document.getElementById('qtyInput');
+  var qtyConfirm = document.getElementById('qtyConfirm');
+  var qtyCancel = document.getElementById('qtyCancel');
+
+  onValue(connRef, function(snap){
+    var online = snap.val() === true;
+    connBadge.classList.toggle('online', online);
+    connBadge.classList.toggle('offline', !online);
+    connLabel.textContent = online ? 'online' : 'sem conexão';
+  });
+
+  onValue(lotesRef, function(snapshot){
+    var next = {};
+    snapshot.forEach(function(child){
+      var v = child.val() || {};
+      var code = v.code || child.key;
+      next[code] = { paletes: v.paletes || 0, unidades: v.unidades || 0, ts: v.ts || 0 };
+    });
+    data = next;
+    render();
+  }, function(err){
+    console.error('Erro lendo dados:', err);
+  });
+
+  function beep(){
+    try{
+      var ctx = new (window.AudioContext || window.webkitAudioContext)();
+      var o = ctx.createOscillator();
+      var g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = mode === 'paletes' ? 880 : 660;
+      g.gain.value = 0.08;
+      o.start();
+      setTimeout(function(){ o.stop(); ctx.close(); }, 90);
+    }catch(e){}
+    try{ if(navigator.vibrate) navigator.vibrate(35); }catch(e){}
+  }
+
+  function focusCapture(){
+    capture.focus();
+    statusDot.classList.add('live');
+    statusText.textContent = manualKeyboard ? 'Pronto — digite o lote' : 'Pronto — pode bipar';
+  }
+  capture.addEventListener('blur', function(){
+    statusDot.classList.remove('live');
+    if(qtyModal.hidden) statusText.textContent = 'Toque no campo para reativar a leitura';
+  });
+
+  document.addEventListener('click', function(e){
+    if(e.target.closest('button') || e.target === capture) return;
+    if(!qtyModal.hidden) return;
+    focusCapture();
+  });
+
+  function setMode(m){
+    mode = m;
+    document.body.classList.toggle('mode-unidades', m === 'unidades');
+    btnPaletes.classList.toggle('active', m === 'paletes');
+    btnUnidades.classList.toggle('active', m === 'unidades');
+    focusCapture();
+  }
+  btnPaletes.addEventListener('click', function(){ setMode('paletes'); });
+  btnUnidades.addEventListener('click', function(){ setMode('unidades'); });
+
+  function setManualKeyboard(on){
+    manualKeyboard = on;
+    btnKeyboard.classList.toggle('on', on);
+    capture.blur();
+    capture.setAttribute('inputmode', on ? 'text' : 'none');
+    setTimeout(focusCapture, 30);
+  }
+  btnKeyboard.addEventListener('click', function(){ setManualKeyboard(!manualKeyboard); });
+
+  function commitEntry(rawValue){
+    var code = (rawValue || '').trim();
+    if(!code) return;
+
+    if(mode === 'paletes'){
+      registerScan(code, 1);
+      return;
+    }
+    pendingCode = code;
+    qtyLoteName.textContent = code;
+    qtyInput.value = '1';
+    qtyModal.hidden = false;
+    setTimeout(function(){ qtyInput.focus(); qtyInput.select(); }, 30);
+  }
+
+  var idleTimer = null;
+  capture.addEventListener('keydown', function(e){
+    if(e.key === 'Enter' || e.key === 'Tab'){
+      e.preventDefault();
+      clearTimeout(idleTimer);
+      var v = capture.value;
+      capture.value = '';
+      commitEntry(v);
+    }
+  });
+  capture.addEventListener('input', function(){
+    if(manualKeyboard) return;
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(function(){
+      var v = capture.value;
+      if(v.trim()){
+        capture.value = '';
+        commitEntry(v);
+      }
+    }, 180);
+  });
+  btnAdd.addEventListener('click', function(){
+    clearTimeout(idleTimer);
+    var v = capture.value;
+    capture.value = '';
+    commitEntry(v);
+    focusCapture();
+  });
+
+  qtyInput.addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){ e.preventDefault(); qtyConfirm.click(); }
+  });
+  qtyConfirm.addEventListener('click', function(){
+    var qty = parseInt(qtyInput.value, 10);
+    if(!qty || qty <= 0) qty = 1;
+    registerScan(pendingCode, qty);
+    qtyModal.hidden = true;
+    pendingCode = '';
+    focusCapture();
+  });
+  qtyCancel.addEventListener('click', function(){
+    qtyModal.hidden = true;
+    pendingCode = '';
+    focusCapture();
+  });
+
+  function registerScan(code, amount){
+    amount = amount || 1;
+    var now = Date.now();
+    if(code === lastValue && (now - lastTime) < 200 && amount === 1) return;
+    lastValue = code; lastTime = now;
+
+    var itemRef = ref(db, 'lotes/' + encodeKey(code));
+    runTransaction(itemRef, function(current){
+      if(!current) current = { code: code, paletes: 0, unidades: 0, ts: 0 };
+      current[mode] = (current[mode] || 0) + amount;
+      current.ts = now;
+      current.code = code;
+      return current;
+    }).then(function(result){
+      if(!result.committed) return;
+      var val = result.snapshot.val() || {};
+      beep();
+      lastCode.textContent = code;
+      lastCode.classList.remove('empty');
+      var unitLabel = mode === 'paletes' ? (amount === 1 ? 'palete' : 'paletes') : (amount === 1 ? 'unidade' : 'unidades');
+      lastDelta.textContent = '+' + amount + ' ' + unitLabel + ' — total nesse lote: ' + (val[mode] || amount);
+      lastScanBox.classList.remove('flash-paletes','flash-unidades');
+      void lastScanBox.offsetWidth;
+      lastScanBox.classList.add(mode === 'paletes' ? 'flash-paletes' : 'flash-unidades');
+      setTimeout(function(){ lastScanBox.classList.remove('flash-paletes','flash-unidades'); }, 350);
+    }).catch(function(err){
+      console.error('Erro ao salvar leitura:', err);
+      alert('Não foi possível salvar. Verifique sua conexão com a internet.');
+    });
+  }
+
+  function adjust(code, field, delta){
+    var itemRef = ref(db, 'lotes/' + encodeKey(code));
+    runTransaction(itemRef, function(current){
+      if(!current) return current;
+      current[field] = Math.max(0, (current[field] || 0) + delta);
+      current.ts = Date.now();
+      return current;
+    }).catch(function(err){ console.error(err); });
+    focusCapture();
+  }
+  function removeLote(code){
+    dbRemove(ref(db, 'lotes/' + encodeKey(code))).catch(function(err){ console.error(err); });
+    focusCapture();
+  }
+
+  function render(){
+    var codes = Object.keys(data).sort(function(a,b){ return data[b].ts - data[a].ts; });
+    list.innerHTML = '';
+    if(codes.length === 0){
+      list.appendChild(emptyState);
+      emptyState.style.display = 'block';
+    } else {
+      emptyState.style.display = 'none';
+      codes.forEach(function(code){
+        var d = data[code];
+        var row = document.createElement('div');
+        row.className = 'row';
+        row.innerHTML =
+          '<div class="lote mono">'+escapeHtml(code)+'</div>'+
+          '<div class="counts">'+
+            '<div class="count-block paletes"><div class="n">'+d.paletes+'</div><div class="u">pal</div></div>'+
+            '<div class="count-block unidades"><div class="n">'+d.unidades+'</div><div class="u">un</div></div>'+
+          '</div>'+
+          '<div class="actions">'+
+            '<button data-act="minus">–</button>'+
+            '<button data-act="plus">+</button>'+
+            '<button data-act="del" class="del">×</button>'+
+          '</div>';
+        row.querySelector('[data-act="minus"]').addEventListener('click', function(){ adjust(code, mode, -1); });
+        row.querySelector('[data-act="plus"]').addEventListener('click', function(){ adjust(code, mode, 1); });
+        row.querySelector('[data-act="del"]').addEventListener('click', function(){
+          if(confirm('Remover o lote '+code+'?')) removeLote(code);
+        });
+        list.appendChild(row);
+      });
+    }
+
+    var tLotes = codes.length, tPal = 0, tUn = 0;
+    codes.forEach(function(c){ tPal += data[c].paletes; tUn += data[c].unidades; });
+    totalLotes.textContent = tLotes;
+    totalPaletes.textContent = tPal;
+    totalUnidades.textContent = tUn;
+  }
+
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  document.getElementById('btnExport').addEventListener('click', function(){
+    var codes = Object.keys(data).sort(function(a,b){ return data[b].ts - data[a].ts; });
+    var lines = ['Lote;Paletes;Unidades'];
+    codes.forEach(function(c){ lines.push(c+';'+data[c].paletes+';'+data[c].unidades); });
+    var csv = lines.join('\r\n');
+    var blob = new Blob(["\ufeff"+csv], { type:'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    var stamp = new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
+    a.href = url;
+    a.download = 'lotes-'+stamp+'.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  document.getElementById('btnClear').addEventListener('click', function(){
+    if(Object.keys(data).length === 0) return;
+    if(confirm('Isso vai apagar todos os lotes registrados para TODOS os aparelhos conectados. Confirma?')){
+      dbRemove(lotesRef).then(function(){
+        lastCode.textContent = 'aguardando leitura…';
+        lastCode.classList.add('empty');
+        lastDelta.textContent = '';
+      }).catch(function(err){ console.error(err); });
+    }
+  });
+
+  render();
+  setTimeout(focusCapture, 300);
+  window.addEventListener('pageshow', focusCapture);
+</script>
+</body>
+</html>
+HTMLEOF
+echo "done"
+Saída
+
+done
