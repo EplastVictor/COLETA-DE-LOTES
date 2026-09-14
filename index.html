@@ -19,6 +19,8 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
     --amber-dim: #7a5e05;
     --blue: #3ea6ff;
     --blue-dim: #1c4a70;
+    --purple: #c48cff;
+    --purple-dim: #3a2a5c;
     --danger: #e8534f;
     --ok: #59d18a;
   }
@@ -97,6 +99,33 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
   .mode-toggle button.active.paletes{ background:var(--amber); color:#211a02; }
   .mode-toggle button.active.unidades{ background:var(--blue); color:#04141f; }
 
+  .product-row{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    margin-bottom:10px;
+  }
+  .product-info{
+    flex:1;
+    min-width:0;
+    font-size:12.5px;
+    color:var(--muted);
+    padding:9px 12px;
+    background:var(--panel-2);
+    border:1.5px solid var(--line);
+    border-radius:10px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .product-info.active-label{ color:var(--purple); font-weight:700; border-color:var(--purple); background:rgba(196,140,255,0.10); }
+  .product-info.awaiting{ color:var(--purple); border-color:var(--purple); animation: pulse-purple 1.2s infinite; }
+  @keyframes pulse-purple{
+    0%{ box-shadow:0 0 0 0 rgba(196,140,255,0.5); }
+    70%{ box-shadow:0 0 0 6px rgba(196,140,255,0); }
+    100%{ box-shadow:0 0 0 0 rgba(196,140,255,0); }
+  }
+
   .scan-field{
     display:flex;
     gap:6px;
@@ -114,6 +143,8 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
   }
   #capture:focus{ outline:none; border-color:var(--amber); }
   body.mode-unidades #capture:focus{ border-color:var(--blue); }
+  body.awaiting-product #capture{ border-color:var(--purple); }
+  body.awaiting-product #capture:focus{ border-color:var(--purple); }
   #capture::placeholder{ color:var(--muted); font-family:inherit; }
 
   .icon-btn{
@@ -126,6 +157,8 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
     font-family:inherit;
   }
   .icon-btn.on{ color:var(--text); border-color:var(--amber); background:rgba(242,183,5,0.12); }
+  .icon-btn.on.purple{ color:var(--purple); border-color:var(--purple); background:rgba(196,140,255,0.12); }
+  .icon-btn.clear-btn{ color:var(--purple); border-color:var(--purple); font-size:20px; }
 
   .add-btn{
     flex-shrink:0;
@@ -166,6 +199,17 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
     font-size:14px;
     line-height:1.6;
   }
+
+  .group-section{ margin-bottom:16px; }
+  .group-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    padding:2px 4px 8px;
+  }
+  .group-header .g-title{ font-size:13px; font-weight:700; color:var(--purple); }
+  .group-header .g-title.neutral{ color:var(--muted); }
+  .group-header .g-sub{ font-size:11px; color:var(--muted); flex-shrink:0; }
 
   .row{
     display:flex;
@@ -223,6 +267,7 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
   .totals .t .l{ font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; }
 
   .btn-row{ display:flex; gap:8px; }
+  .btn-row + .btn-row{ margin-top:8px; }
   .btn-row button{
     flex:1;
     padding:11px 0;
@@ -235,6 +280,7 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
     font-family:inherit;
   }
   .btn-row button.danger{ color:var(--danger); }
+  .btn-row button.quality{ color:var(--purple); border-color:var(--purple); }
 
   /* quantity modal */
   .modal-overlay{
@@ -297,6 +343,11 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
       <button id="btnPaletes" class="active paletes">Paletes</button>
       <button id="btnUnidades">Unidades</button>
     </div>
+    <div class="product-row">
+      <div class="product-info" id="productInfo">Nenhum produto vinculado — lotes ficam gerais</div>
+      <button class="icon-btn clear-btn" id="btnProductClear" title="Remover produto ativo" hidden>×</button>
+      <button class="icon-btn" id="btnProduct" title="Informar produto">📦</button>
+    </div>
     <div class="scan-field">
       <input id="capture" type="text" inputmode="none" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Bipe o QR code ou digite o lote">
       <button class="icon-btn" id="btnKeyboard" title="Ativar digitação manual">⌨</button>
@@ -322,6 +373,9 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
     </div>
     <div class="btn-row">
       <button id="btnExport">Exportar CSV</button>
+      <button id="btnQuality" class="quality">Lotes p/ Qualidade</button>
+    </div>
+    <div class="btn-row">
       <button id="btnClear" class="danger">Limpar tudo</button>
     </div>
   </footer>
@@ -338,10 +392,11 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
     </div>
   </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import {
-    getDatabase, ref, onValue, runTransaction, remove as dbRemove
+    getDatabase, ref, onValue, runTransaction, update, remove as dbRemove
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
   var firebaseConfig = {
@@ -356,16 +411,26 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
 
   var fbApp = initializeApp(firebaseConfig);
   var db = getDatabase(fbApp);
-  var lotesRef = ref(db, 'lotes');
+  var produtosRef = ref(db, 'produtos');
+  var semProdutoRef = ref(db, 'semProduto');
   var connRef = ref(db, '.info/connected');
 
   function encodeKey(code){
     return encodeURIComponent(String(code)).replace(/\./g, '%2E');
   }
+  function pathForLote(productCode, loteCode){
+    if(productCode) return 'produtos/' + encodeKey(productCode) + '/lotes/' + encodeKey(loteCode);
+    return 'semProduto/' + encodeKey(loteCode);
+  }
 
-  var data = {};        // { lote: { paletes:n, unidades:n, ts:number } }
+  var SEM_PRODUTO_KEY = '_sem_produto_';
+  var groups = {};
+  groups[SEM_PRODUTO_KEY] = { productCode: null, label: 'Sem produto vinculado', lotes: {} };
+
   var mode = 'paletes';
   var manualKeyboard = false;
+  var activeProduct = null;
+  var awaitingProduct = false;
   var lastValue = '';
   var lastTime = 0;
   var pendingCode = '';
@@ -379,6 +444,9 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
   var btnUnidades = document.getElementById('btnUnidades');
   var btnKeyboard = document.getElementById('btnKeyboard');
   var btnAdd = document.getElementById('btnAdd');
+  var btnProduct = document.getElementById('btnProduct');
+  var btnProductClear = document.getElementById('btnProductClear');
+  var productInfo = document.getElementById('productInfo');
   var lastScanBox = document.getElementById('lastScanBox');
   var lastCode = document.getElementById('lastCode');
   var lastDelta = document.getElementById('lastDelta');
@@ -400,18 +468,36 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
     connLabel.textContent = online ? 'online' : 'sem conexão';
   });
 
-  onValue(lotesRef, function(snapshot){
-    var next = {};
+  onValue(semProdutoRef, function(snapshot){
+    var lotesMap = {};
     snapshot.forEach(function(child){
       var v = child.val() || {};
       var code = v.code || child.key;
-      next[code] = { paletes: v.paletes || 0, unidades: v.unidades || 0, ts: v.ts || 0 };
+      lotesMap[code] = { paletes: v.paletes || 0, unidades: v.unidades || 0, ts: v.ts || 0 };
     });
-    data = next;
+    groups[SEM_PRODUTO_KEY] = { productCode: null, label: 'Sem produto vinculado', lotes: lotesMap };
     render();
-  }, function(err){
-    console.error('Erro lendo dados:', err);
-  });
+  }, function(err){ console.error('Erro lendo sem-produto:', err); });
+
+  onValue(produtosRef, function(snapshot){
+    var newGroups = {};
+    newGroups[SEM_PRODUTO_KEY] = groups[SEM_PRODUTO_KEY] || { productCode: null, label: 'Sem produto vinculado', lotes: {} };
+    snapshot.forEach(function(child){
+      var v = child.val() || {};
+      var code = v.code || child.key;
+      var lotesMap = {};
+      if(v.lotes){
+        Object.keys(v.lotes).forEach(function(lk){
+          var lv = v.lotes[lk] || {};
+          var lcode = lv.code || lk;
+          lotesMap[lcode] = { paletes: lv.paletes || 0, unidades: lv.unidades || 0, ts: lv.ts || 0 };
+        });
+      }
+      newGroups[code] = { productCode: code, label: 'Produto: ' + code, lotes: lotesMap };
+    });
+    groups = newGroups;
+    render();
+  }, function(err){ console.error('Erro lendo produtos:', err); });
 
   function beep(){
     try{
@@ -430,7 +516,11 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
   function focusCapture(){
     capture.focus();
     statusDot.classList.add('live');
-    statusText.textContent = manualKeyboard ? 'Pronto — digite o lote' : 'Pronto — pode bipar';
+    if(awaitingProduct){
+      statusText.textContent = 'Aguardando código do PRODUTO';
+    } else {
+      statusText.textContent = manualKeyboard ? 'Pronto — digite o lote' : 'Pronto — pode bipar';
+    }
   }
   capture.addEventListener('blur', function(){
     statusDot.classList.remove('live');
@@ -462,10 +552,65 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
   }
   btnKeyboard.addEventListener('click', function(){ setManualKeyboard(!manualKeyboard); });
 
+  function updateProductUI(){
+    document.body.classList.toggle('awaiting-product', awaitingProduct);
+    productInfo.classList.remove('awaiting','active-label');
+    btnProduct.classList.remove('on','purple');
+    if(awaitingProduct){
+      productInfo.textContent = 'Bipe ou digite o código do PRODUTO…';
+      productInfo.classList.add('awaiting');
+      btnProduct.classList.add('on','purple');
+      btnProduct.title = 'Cancelar leitura do produto';
+      btnProductClear.hidden = true;
+      capture.placeholder = 'Bipe ou digite o código do PRODUTO';
+    } else if(activeProduct){
+      productInfo.textContent = 'Produto: ' + activeProduct;
+      productInfo.classList.add('active-label');
+      btnProduct.title = 'Trocar produto';
+      btnProductClear.hidden = false;
+      capture.placeholder = 'Bipe o QR code ou digite o lote';
+    } else {
+      productInfo.textContent = 'Nenhum produto vinculado — lotes ficam gerais';
+      btnProduct.title = 'Informar produto';
+      btnProductClear.hidden = true;
+      capture.placeholder = 'Bipe o QR code ou digite o lote';
+    }
+  }
+
+  btnProduct.addEventListener('click', function(){
+    if(awaitingProduct){
+      awaitingProduct = false;
+      updateProductUI();
+      focusCapture();
+      return;
+    }
+    awaitingProduct = true;
+    updateProductUI();
+    focusCapture();
+  });
+  btnProductClear.addEventListener('click', function(){
+    activeProduct = null;
+    awaitingProduct = false;
+    updateProductUI();
+    focusCapture();
+  });
+
+  function setActiveProduct(code){
+    activeProduct = code;
+    awaitingProduct = false;
+    update(ref(db, 'produtos/' + encodeKey(code)), { code: code }).catch(function(e){ console.error(e); });
+    updateProductUI();
+  }
+
   function commitEntry(rawValue){
     var code = (rawValue || '').trim();
     if(!code) return;
 
+    if(awaitingProduct){
+      setActiveProduct(code);
+      focusCapture();
+      return;
+    }
     if(mode === 'paletes'){
       registerScan(code, 1);
       return;
@@ -529,7 +674,8 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
     if(code === lastValue && (now - lastTime) < 200 && amount === 1) return;
     lastValue = code; lastTime = now;
 
-    var itemRef = ref(db, 'lotes/' + encodeKey(code));
+    var productCode = activeProduct;
+    var itemRef = ref(db, pathForLote(productCode, code));
     runTransaction(itemRef, function(current){
       if(!current) current = { code: code, paletes: 0, unidades: 0, ts: 0 };
       current[mode] = (current[mode] || 0) + amount;
@@ -540,7 +686,7 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
       if(!result.committed) return;
       var val = result.snapshot.val() || {};
       beep();
-      lastCode.textContent = code;
+      lastCode.textContent = code + (productCode ? '  ·  ' + productCode : '');
       lastCode.classList.remove('empty');
       var unitLabel = mode === 'paletes' ? (amount === 1 ? 'palete' : 'paletes') : (amount === 1 ? 'unidade' : 'unidades');
       lastDelta.textContent = '+' + amount + ' ' + unitLabel + ' — total nesse lote: ' + (val[mode] || amount);
@@ -554,8 +700,8 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
     });
   }
 
-  function adjust(code, field, delta){
-    var itemRef = ref(db, 'lotes/' + encodeKey(code));
+  function adjust(productCode, code, field, delta){
+    var itemRef = ref(db, pathForLote(productCode, code));
     runTransaction(itemRef, function(current){
       if(!current) return current;
       current[field] = Math.max(0, (current[field] || 0) + delta);
@@ -564,45 +710,76 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
     }).catch(function(err){ console.error(err); });
     focusCapture();
   }
-  function removeLote(code){
-    dbRemove(ref(db, 'lotes/' + encodeKey(code))).catch(function(err){ console.error(err); });
+  function removeLote(productCode, code){
+    dbRemove(ref(db, pathForLote(productCode, code))).catch(function(err){ console.error(err); });
     focusCapture();
   }
 
+  function maxTs(lotesMap){
+    var m = 0;
+    Object.keys(lotesMap).forEach(function(c){ if(lotesMap[c].ts > m) m = lotesMap[c].ts; });
+    return m;
+  }
+
+  function buildRow(productCode, code, d){
+    var row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML =
+      '<div class="lote mono">'+escapeHtml(code)+'</div>'+
+      '<div class="counts">'+
+        '<div class="count-block paletes"><div class="n">'+d.paletes+'</div><div class="u">pal</div></div>'+
+        '<div class="count-block unidades"><div class="n">'+d.unidades+'</div><div class="u">un</div></div>'+
+      '</div>'+
+      '<div class="actions">'+
+        '<button data-act="minus">–</button>'+
+        '<button data-act="plus">+</button>'+
+        '<button data-act="del" class="del">×</button>'+
+      '</div>';
+    row.querySelector('[data-act="minus"]').addEventListener('click', function(){ adjust(productCode, code, mode, -1); });
+    row.querySelector('[data-act="plus"]').addEventListener('click', function(){ adjust(productCode, code, mode, 1); });
+    row.querySelector('[data-act="del"]').addEventListener('click', function(){
+      if(confirm('Remover o lote '+code+'?')) removeLote(productCode, code);
+    });
+    return row;
+  }
+
   function render(){
-    var codes = Object.keys(data).sort(function(a,b){ return data[b].ts - data[a].ts; });
+    var groupKeys = Object.keys(groups).filter(function(k){ return Object.keys(groups[k].lotes).length > 0; });
+    groupKeys.sort(function(a,b){ return maxTs(groups[b].lotes) - maxTs(groups[a].lotes); });
+
     list.innerHTML = '';
-    if(codes.length === 0){
+    if(groupKeys.length === 0){
       list.appendChild(emptyState);
       emptyState.style.display = 'block';
     } else {
       emptyState.style.display = 'none';
-      codes.forEach(function(code){
-        var d = data[code];
-        var row = document.createElement('div');
-        row.className = 'row';
-        row.innerHTML =
-          '<div class="lote mono">'+escapeHtml(code)+'</div>'+
-          '<div class="counts">'+
-            '<div class="count-block paletes"><div class="n">'+d.paletes+'</div><div class="u">pal</div></div>'+
-            '<div class="count-block unidades"><div class="n">'+d.unidades+'</div><div class="u">un</div></div>'+
-          '</div>'+
-          '<div class="actions">'+
-            '<button data-act="minus">–</button>'+
-            '<button data-act="plus">+</button>'+
-            '<button data-act="del" class="del">×</button>'+
-          '</div>';
-        row.querySelector('[data-act="minus"]').addEventListener('click', function(){ adjust(code, mode, -1); });
-        row.querySelector('[data-act="plus"]').addEventListener('click', function(){ adjust(code, mode, 1); });
-        row.querySelector('[data-act="del"]').addEventListener('click', function(){
-          if(confirm('Remover o lote '+code+'?')) removeLote(code);
+      groupKeys.forEach(function(gkey){
+        var group = groups[gkey];
+        var codes = Object.keys(group.lotes).sort(function(a,b){ return group.lotes[b].ts - group.lotes[a].ts; });
+        var gp = 0, gu = 0;
+        codes.forEach(function(c){ gp += group.lotes[c].paletes; gu += group.lotes[c].unidades; });
+
+        var section = document.createElement('div');
+        section.className = 'group-section';
+        var header = document.createElement('div');
+        header.className = 'group-header';
+        header.innerHTML =
+          '<span class="g-title'+(gkey === SEM_PRODUTO_KEY ? ' neutral' : '')+'">'+escapeHtml(group.label)+'</span>'+
+          '<span class="g-sub">'+gp+' pal · '+gu+' un</span>';
+        section.appendChild(header);
+
+        codes.forEach(function(code){
+          section.appendChild(buildRow(group.productCode, code, group.lotes[code]));
         });
-        list.appendChild(row);
+        list.appendChild(section);
       });
     }
 
-    var tLotes = codes.length, tPal = 0, tUn = 0;
-    codes.forEach(function(c){ tPal += data[c].paletes; tUn += data[c].unidades; });
+    var tLotes = 0, tPal = 0, tUn = 0;
+    groupKeys.forEach(function(gkey){
+      var g = groups[gkey];
+      Object.keys(g.lotes).forEach(function(c){ tLotes++; tPal += g.lotes[c].paletes; tUn += g.lotes[c].unidades; });
+    });
     totalLotes.textContent = tLotes;
     totalPaletes.textContent = tPal;
     totalUnidades.textContent = tUn;
@@ -614,10 +791,24 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
     });
   }
 
+  function sortedGroupKeys(){
+    var keys = Object.keys(groups).filter(function(k){ return Object.keys(groups[k].lotes).length > 0; });
+    keys.sort(function(a,b){ return maxTs(groups[b].lotes) - maxTs(groups[a].lotes); });
+    return keys;
+  }
+
   document.getElementById('btnExport').addEventListener('click', function(){
-    var codes = Object.keys(data).sort(function(a,b){ return data[b].ts - data[a].ts; });
-    var lines = ['Lote;Paletes;Unidades'];
-    codes.forEach(function(c){ lines.push(c+';'+data[c].paletes+';'+data[c].unidades); });
+    var keys = sortedGroupKeys();
+    var lines = ['Produto;Lote;Paletes;Unidades'];
+    keys.forEach(function(gkey){
+      var group = groups[gkey];
+      var codes = Object.keys(group.lotes).sort(function(a,b){ return group.lotes[b].ts - group.lotes[a].ts; });
+      codes.forEach(function(c){
+        var d = group.lotes[c];
+        var prod = group.productCode || '';
+        lines.push(prod+';'+c+';'+d.paletes+';'+d.unidades);
+      });
+    });
     var csv = lines.join('\r\n');
     var blob = new Blob(["\ufeff"+csv], { type:'text/csv;charset=utf-8;' });
     var url = URL.createObjectURL(blob);
@@ -631,10 +822,98 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
     URL.revokeObjectURL(url);
   });
 
+  document.getElementById('btnQuality').addEventListener('click', function(){
+    if(typeof window.jspdf === 'undefined'){
+      alert('A biblioteca de PDF não carregou. Verifique sua conexão com a internet e tente de novo.');
+      return;
+    }
+    var keys = sortedGroupKeys();
+    if(keys.length === 0){
+      alert('Nenhum lote registrado ainda.');
+      return;
+    }
+    var jsPDF = window.jspdf.jsPDF;
+    var doc = new jsPDF({ unit:'pt', format:'a4' });
+    var marginX = 40;
+    var rightEdge = 555;
+    var pageHeight = doc.internal.pageSize.getHeight();
+    var y = 50;
+
+    function ensureSpace(extra){
+      if(y + extra > pageHeight - 40){ doc.addPage(); y = 50; }
+    }
+
+    doc.setFont('helvetica','bold'); doc.setFontSize(16);
+    doc.text('Relatório de Lotes — Controle de Qualidade', marginX, y);
+    y += 20;
+    doc.setFont('helvetica','normal'); doc.setFontSize(10);
+    doc.setTextColor(110);
+    doc.text('Gerado em ' + new Date().toLocaleString('pt-BR'), marginX, y);
+    doc.setTextColor(0);
+    y += 24;
+
+    var grandLotes = 0, grandPal = 0, grandUn = 0;
+
+    keys.forEach(function(gkey){
+      var group = groups[gkey];
+      var codes = Object.keys(group.lotes).sort(function(a,b){ return group.lotes[b].ts - group.lotes[a].ts; });
+      if(codes.length === 0) return;
+
+      ensureSpace(34);
+      doc.setFont('helvetica','bold'); doc.setFontSize(13);
+      doc.text(group.label, marginX, y);
+      y += 16;
+
+      doc.setFont('helvetica','bold'); doc.setFontSize(9);
+      doc.setTextColor(110);
+      doc.text('LOTE', marginX, y);
+      doc.text('PALETES', marginX + 300, y);
+      doc.text('UNIDADES', marginX + 390, y);
+      doc.setTextColor(0);
+      y += 6;
+      doc.setDrawColor(210);
+      doc.line(marginX, y, rightEdge, y);
+      y += 14;
+
+      var gp = 0, gu = 0;
+      doc.setFont('helvetica','normal'); doc.setFontSize(11);
+      codes.forEach(function(code){
+        var d = group.lotes[code];
+        ensureSpace(16);
+        doc.text(String(code), marginX, y);
+        doc.text(String(d.paletes), marginX + 300, y);
+        doc.text(String(d.unidades), marginX + 390, y);
+        gp += d.paletes; gu += d.unidades;
+        y += 16;
+      });
+
+      grandLotes += codes.length; grandPal += gp; grandUn += gu;
+
+      ensureSpace(20);
+      doc.setFont('helvetica','bold'); doc.setFontSize(10);
+      doc.text('Subtotal: ' + gp + ' paletes, ' + gu + ' unidades (' + codes.length + ' lotes)', marginX, y);
+      y += 26;
+    });
+
+    ensureSpace(40);
+    doc.setDrawColor(0);
+    doc.line(marginX, y, rightEdge, y);
+    y += 20;
+    doc.setFont('helvetica','bold'); doc.setFontSize(12);
+    doc.text('Total geral: ' + grandLotes + ' lotes · ' + grandPal + ' paletes · ' + grandUn + ' unidades', marginX, y);
+
+    var stamp = new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
+    doc.save('lotes-qualidade-'+stamp+'.pdf');
+  });
+
   document.getElementById('btnClear').addEventListener('click', function(){
-    if(Object.keys(data).length === 0) return;
+    var hasData = sortedGroupKeys().length > 0;
+    if(!hasData) return;
     if(confirm('Isso vai apagar todos os lotes registrados para TODOS os aparelhos conectados. Confirma?')){
-      dbRemove(lotesRef).then(function(){
+      Promise.all([ dbRemove(produtosRef), dbRemove(semProdutoRef) ]).then(function(){
+        activeProduct = null;
+        awaitingProduct = false;
+        updateProductUI();
         lastCode.textContent = 'aguardando leitura…';
         lastCode.classList.add('empty');
         lastDelta.textContent = '';
@@ -642,6 +921,7 @@ cat > /mnt/user-data/outputs/registro-lotes.html << 'HTMLEOF'
     }
   });
 
+  updateProductUI();
   render();
   setTimeout(focusCapture, 300);
   window.addEventListener('pageshow', focusCapture);
